@@ -55,25 +55,36 @@ int serverInit() {
 
 void generateResponse(int client_fd, char *path) {
     int requested_file_fd = open(path, O_RDONLY);
-    //if file descriptor is < 0
+
     if(requested_file_fd < 0) {
         char response[500];
-        //sprintf 404 not found header
+
         snprintf(response, 500,
                  "HTTP/1.0 404 Not Found\r\n"
                         "Content-Length:\r\n"
                         "\r\n"
+                        "\r\n"
                         "The requested file could not be opened.");
-        //send the response
         send(client_fd, response, strlen(response), 0);
     }
     else {
-        //call stat and save the file size
-        //make a buffer to read into the size of the file plus 1
-        //read the file into the buffer with a read the size of the file
         struct stat file_info;
-        stat()
+        stat(path, &file_info);
+        char header[100];
+        char fileBuffer[file_info.st_size + 1];
 
+        if(read(requested_file_fd, fileBuffer, file_info.st_size) < 0) {
+            perror("Read failure");
+        }
+        snprintf(header, 100, "HTTP/1.0 200 OK\r\n"
+                     "Content-Length: %zd\r\n"
+                     "\r\n"
+                     "\r\n", file_info.st_size);
+        char response[strlen(header) + file_info.st_size + 1];
+        strncat(response, header, strlen(header));
+        strncat(response, fileBuffer, file_info.st_size);
+        send(client_fd, response, strlen(response), 0);
+        close(requested_file_fd);
     }
 }
 
@@ -124,19 +135,16 @@ void *serveRequest(void *client_fd) {
 int main(int argc, char** argv) {
     int server_fd = serverInit(); //we dont need to check this here because we do it all in the function
     int chdir_status = chdir(argv[1]);
+
     if(chdir_status != 0) {
         perror("chdir() failure");
         exit(1);
     }
-    //enter into an infinite loop of accept, p_thread_create, recv, serveRequest(?)
-    //remember to pass the path to the pthread
-    //while(1)
-        //accept
-        //p_thread
-        //p_thread_join
-        //we need to close the client connection upon sending the response
     while(1) {
         //we can save this for last
+        //accept a client
+        //serve the client
+        //pthread_join
     }
     return 0;
 }
