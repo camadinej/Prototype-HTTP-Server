@@ -1,0 +1,3 @@
+/home/jcamadine/development/WebServer/cmake-build-debug/CMakeFiles/WebServer.dir
+/home/jcamadine/development/WebServer/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/jcamadine/development/WebServer/cmake-build-debug/CMakeFiles/rebuild_cache.dir
