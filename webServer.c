@@ -15,8 +15,8 @@
 #include <limits.h>
 
 int serverInit() {
-    //create a socket, bind, and listen:
-    struct addrinfo *head, *current;
+    struct addrinfo *head = NULL;
+    struct addrinfo *current = NULL;
     struct addrinfo hints;
     int server_fd;
     int getaddr_status;
@@ -31,6 +31,7 @@ int serverInit() {
         perror("getaddrinfo failure");
         exit(1);
     }
+    //break on the first successful bind and socket
     for(current = head; current != NULL; current = current->ai_next) {
         if((server_fd = socket(current->ai_family, current->ai_socktype, current->ai_protocol)) == -1) {
             continue;
@@ -56,34 +57,39 @@ int serverInit() {
 void generateResponse(int client_fd, char *path) {
     int requested_file_fd = open(path, O_RDONLY);
 
+    //if we get a bad file descriptor send the 404 not found error message
     if(requested_file_fd < 0) {
-        char response[500];
+        char response[500] = {'\0'};
 
         snprintf(response, 500,
                  "HTTP/1.0 404 Not Found\r\n"
                         "Content-Length:\r\n"
                         "\r\n"
                         "\r\n"
-                        "The requested file could not be opened.");
+                        "The requested file could not be opened.\r\n");
         send(client_fd, response, strlen(response), 0);
     }
     else {
         struct stat file_info;
         stat(path, &file_info);
-        char header[100];
-        char fileBuffer[file_info.st_size + 1];
-
-        if(read(requested_file_fd, fileBuffer, file_info.st_size) < 0) {
+        char *header = malloc(100 * sizeof(char));
+        //create the header for the 200 OK message
+        snprintf(header, 100, "HTTP/1.0 200 OK\r\n"
+                              "Content-Length: %zd\r\n"
+                              "\r\n"
+                              "\r\n", file_info.st_size);
+        //copy the header, and read the file into response
+        char *response = malloc(((strlen(header) + file_info.st_size + 3) * (sizeof(char))));
+        strncpy(response, header, strlen(header));
+        if(read(requested_file_fd, response + strlen(header), file_info.st_size) < 0) {
             perror("Read failure");
         }
-        snprintf(header, 100, "HTTP/1.0 200 OK\r\n"
-                     "Content-Length: %zd\r\n"
-                     "\r\n"
-                     "\r\n", file_info.st_size);
-        char response[strlen(header) + file_info.st_size + 1];
-        strncat(response, header, strlen(header));
-        strncat(response, fileBuffer, file_info.st_size);
+        response[strlen(header) + file_info.st_size] = '\r';
+        response[strlen(header) + file_info.st_size + 1] = '\n';
+        response[strlen(header) + file_info.st_size + 2] = '\0';
         send(client_fd, response, strlen(response), 0);
+        free(response);
+        free(header);
         close(requested_file_fd);
     }
 }
@@ -114,37 +120,40 @@ int parseGet(char *request, char *buffer) {
     return 0;
 }
 
-void *serveRequest(void *client_fd) {
-    //char request[PATH_MAX]
-    char request[500];
-    //char filePath[PATH_MAX]
-    char filePath[500];
-    //recv and check the return
+void *serveClient(void *client_fd) {
+    char request[500] = {'\0'};
+    char filePath[500] = {'\0'};
     ssize_t bytesReceived =  recv((*(int *)client_fd), request, 500, 0);
+    //parse and respond to request
     if(bytesReceived > 0 ) {
-        //if parse get is successful call generateResponse
         if(parseGet(request, filePath) == 0) {
             generateResponse(*(int *)client_fd, filePath);
         }
     }
-    //by this point we've served the request and are finished with this client
     close(*(int *)client_fd);
-    return NULL;
+    pthread_exit(NULL);
 }
 
 int main(int argc, char** argv) {
-    int server_fd = serverInit(); //we dont need to check this here because we do it all in the function
+    int server_fd = serverInit();
     int chdir_status = chdir(argv[1]);
+    struct sockaddr_storage client_address;
+    socklen_t sin_size;
 
     if(chdir_status != 0) {
         perror("chdir() failure");
         exit(1);
     }
     while(1) {
-        //we can save this for last
-        //accept a client
-        //serve the client
-        //pthread_join
+        int client_fd;
+
+        sin_size = sizeof(client_address);
+        if((client_fd = accept(server_fd, (struct sockaddr *)&client_address, &sin_size)) == -1) {
+            perror("'failed to accept client");
+            continue;
+        }
+        pthread_t client_thread;
+        pthread_create(&client_thread, NULL, serveClient, &client_fd);
+        pthread_join(client_thread, NULL);
     }
-    return 0;
 }
