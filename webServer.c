@@ -162,7 +162,7 @@ int main(int argc, char** argv) {
         perror("chdir() failure");
         exit(1);
     }
-    //put this back in a loop //start doing tests in different branches silly
+
     while(1) {
         int client_fd;
 
