@@ -14,6 +14,12 @@
 #include <pthread.h>
 #include <limits.h>
 
+/**
+ * Creates a socket suitable for serving clients,
+ * and prepares it for accepting connections.
+ *
+ * @return server_fd or exit on failure of any stage of server initialization
+ */
 int serverInit() {
     struct addrinfo *head = NULL;
     struct addrinfo *current = NULL;
@@ -26,7 +32,7 @@ int serverInit() {
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
-    getaddr_status = getaddrinfo(NULL, "8080", &hints, &head);
+    getaddr_status = getaddrinfo(NULL, "8000", &hints, &head);
     if(getaddr_status != 0) {
         perror("getaddrinfo failure");
         exit(1);
@@ -50,21 +56,28 @@ int serverInit() {
     }
     if(listen(server_fd, 128) == -1) {
         perror("listen() failure");
+        exit(1);
     }
     return server_fd;
 }
 
+/**
+ * Serves client requested files or notifies a client
+ * that the requested files could not be found.
+ *
+ * @param client_fd - the client socket
+ * @param path  - requested file
+ */
 void generateResponse(int client_fd, char *path) {
     int requested_file_fd = open(path, O_RDONLY);
 
-    //if we get a bad file descriptor send the 404 not found error message
+    //if there is an error opening the file send the 404 not found error message
     if(requested_file_fd < 0) {
         char response[500] = {'\0'};
 
         snprintf(response, 500,
                  "HTTP/1.0 404 Not Found\r\n"
                         "Content-Length:\r\n"
-                        "\r\n"
                         "\r\n"
                         "The requested file could not be opened.\r\n");
         send(client_fd, response, strlen(response), 0);
@@ -76,7 +89,6 @@ void generateResponse(int client_fd, char *path) {
         //create the header for the 200 OK message
         snprintf(header, 100, "HTTP/1.0 200 OK\r\n"
                               "Content-Length: %zd\r\n"
-                              "\r\n"
                               "\r\n", file_info.st_size);
         //copy the header, and read the file into response
         char *response = malloc(((strlen(header) + file_info.st_size + 3) * (sizeof(char))));
@@ -120,6 +132,12 @@ int parseGet(char *request, char *buffer) {
     return 0;
 }
 
+/**
+ * Receives client request, validates syntax, and generates a response.
+ *
+ * @param client_fd - the client socket
+ * @return NULL
+ */
 void *serveClient(void *client_fd) {
     char request[500] = {'\0'};
     char filePath[500] = {'\0'};
@@ -131,7 +149,7 @@ void *serveClient(void *client_fd) {
         }
     }
     close(*(int *)client_fd);
-    pthread_exit(NULL);
+    return NULL;
 }
 
 int main(int argc, char** argv) {
@@ -144,6 +162,7 @@ int main(int argc, char** argv) {
         perror("chdir() failure");
         exit(1);
     }
+    //put this back in a loop //start doing tests in different branches silly
     while(1) {
         int client_fd;
 
