@@ -5,14 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <netdb.h>
-#include <arpa/inet.h>
 #include <pthread.h>
-#include <limits.h>
 
 /**
  * Creates a socket suitable for serving clients,
@@ -70,11 +67,9 @@ int serverInit() {
  */
 void generateResponse(int client_fd, char *path) {
     int requested_file_fd = open(path, O_RDONLY);
-
     //if there is an error opening the file send the 404 not found error message
     if(requested_file_fd < 0) {
         char response[500] = {'\0'};
-
         snprintf(response, 500,
                  "HTTP/1.0 404 Not Found\r\n"
                         "Content-Length:\r\n"
@@ -85,7 +80,7 @@ void generateResponse(int client_fd, char *path) {
     else {
         struct stat file_info;
         stat(path, &file_info);
-        char *header = malloc(100 * sizeof(char));
+        char header[100];
         //create the header for the 200 OK message
         snprintf(header, 100, "HTTP/1.0 200 OK\r\n"
                               "Content-Length: %zd\r\n"
@@ -101,7 +96,6 @@ void generateResponse(int client_fd, char *path) {
         response[strlen(header) + file_info.st_size + 2] = '\0';
         send(client_fd, response, strlen(response), 0);
         free(response);
-        free(header);
         close(requested_file_fd);
     }
 }
@@ -121,6 +115,9 @@ int parseGet(char *request, char *buffer) {
     stringToParse = request;
     token = strtok_r(stringToParse, " ", &saveState);
     if(strncmp("GET", token, 3) != 0) {
+        return -1;
+    }
+    if(token == NULL) {
         return -1;
     }
     stringToParse = NULL;
@@ -153,25 +150,31 @@ void *serveClient(void *client_fd) {
 }
 
 int main(int argc, char** argv) {
-    int server_fd = serverInit();
-    int chdir_status = chdir(argv[1]);
     struct sockaddr_storage client_address;
+    pthread_t client_thread;
+
+    int server_fd = serverInit();
+    int client_fd;
+    if(argv[1] == NULL) {
+        printf("This server requires the user to specify a directory to serve files from.\r\n"
+               "Re-run with a path passed as a command line argument.\r\n"
+               "Exiting...\r\n");
+        exit(1);
+    }
+    int chdir_status = chdir(argv[1]);
+
     socklen_t sin_size;
 
     if(chdir_status != 0) {
         perror("chdir() failure");
         exit(1);
     }
-
     while(1) {
-        int client_fd;
-
         sin_size = sizeof(client_address);
         if((client_fd = accept(server_fd, (struct sockaddr *)&client_address, &sin_size)) == -1) {
             perror("'failed to accept client");
             continue;
         }
-        pthread_t client_thread;
         pthread_create(&client_thread, NULL, serveClient, &client_fd);
         pthread_join(client_thread, NULL);
     }
